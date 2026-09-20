@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Usuarios - Plataforma Negocio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  {% include "_nav.html" %}
+
+  <div class="contenedor">
+    <div class="tarjeta oculto" id="tarjeta-nuevo-usuario">
+      <h2>Nuevo usuario</h2>
+      <form id="form-usuario">
+        <label for="nombre_completo">Nombre completo</label>
+        <input type="text" id="nombre_completo" required />
+
+        <label for="correo">Correo</label>
+        <input type="email" id="correo" required />
+
+        <label for="contrasena">Contraseña (mínimo 6 caracteres)</label>
+        <input type="password" id="contrasena" minlength="6" required />
+
+        <label for="rol">Rol</label>
+        <select id="rol">
+          <option value="vendedor">Vendedor</option>
+          <option value="contador">Contador</option>
+          <option value="dueno">Dueño</option>
+        </select>
+
+        <div class="mensaje-error" id="mensaje-error"></div>
+        <button type="submit" class="boton-primario" style="margin-top: 8px;">Crear usuario</button>
+      </form>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Usuarios del sistema</h2>
+      <table>
+        <thead>
+          <tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th></th></tr>
+        </thead>
+        <tbody id="tabla-usuarios"><tr><td colspan="5">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    Sesion.exigir();
+
+    if (Sesion.rol() === "dueno") {
+      document.getElementById("tarjeta-nuevo-usuario").classList.remove("oculto");
+    }
+
+    async function cargarUsuarios() {
+      const cuerpoTabla = document.getElementById("tabla-usuarios");
+      const esDueno = Sesion.rol() === "dueno";
+      try {
+        const usuarios = await apiFetch("/usuarios");
+        cuerpoTabla.innerHTML = usuarios
+          .map(
+            (u) => `<tr>
+              <td>${u.nombre_completo}</td>
+              <td>${u.correo}</td>
+              <td>${u.rol}</td>
+              <td>${u.activo ? "Activo" : "Inactivo"}</td>
+              <td>${esDueno && u.activo ? `<button class="boton-secundario" data-id="${u.id}">Desactivar</button>` : ""}</td>
+            </tr>`
+          )
+          .join("");
+
+        cuerpoTabla.querySelectorAll("button[data-id]").forEach((boton) => {
+          boton.addEventListener("click", () => desactivarUsuario(Number(boton.dataset.id)));
+        });
+      } catch (error) {
+        cuerpoTabla.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`;
+      }
+    }
+
+    async function desactivarUsuario(usuarioId) {
+      if (!confirm("¿Desactivar este usuario? Ya no podrá iniciar sesión.")) return;
+      try {
+        await apiFetch(`/usuarios/${usuarioId}/desactivar`, { method: "PATCH" });
+        await cargarUsuarios();
+      } catch (error) {
+        alert(`Error: ${error.message}`);
+      }
+    }
+
+    const formulario = document.getElementById("form-usuario");
+    if (formulario) {
+      formulario.addEventListener("submit", async (evento) => {
+        evento.preventDefault();
+        const mensajeError = document.getElementById("mensaje-error");
+        mensajeError.textContent = "";
+
+        const cuerpo = {
+          nombre_completo: document.getElementById("nombre_completo").value,
+          correo: document.getElementById("correo").value,
+          contrasena: document.getElementById("contrasena").value,
+          rol: document.getElementById("rol").value,
+        };
+
+        try {
+          await apiFetch("/usuarios", { method: "POST", body: cuerpo });
+          formulario.reset();
+          await cargarUsuarios();
+        } catch (error) {
+          mensajeError.textContent = error.message;
+        }
+      });
+    }
+
+    cargarUsuarios();
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# --- Framework web ---
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20   # necesario para leer formularios (ej. login)
+jinja2==3.1.5               # motor de plantillas HTML del frontend simple
+
+# --- Base de datos ---
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10     # driver para hablar con PostgreSQL
+alembic==1.14.0              # herramienta de migraciones (versiona los cambios de tablas)
+
+# --- Configuración ---
+pydantic==2.10.4
+email-validator==2.2.0        # valida que los correos tengan formato correcto (EmailStr)
+pydantic-settings==2.7.0     # lee la configuración desde el archivo .env
+
+# --- Seguridad (login y tokens) ---
+pyjwt==2.10.1                 # genera y valida los tokens JWT
+bcrypt==4.2.1                 # encripta contraseñas

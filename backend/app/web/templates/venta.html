@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registrar venta - Plataforma Negocio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  {% include "_nav.html" %}
+
+  <div class="contenedor">
+    <div class="tarjeta">
+      <h2>Registrar venta</h2>
+      <p class="subtitulo">Toca un producto para registrar la venta de 1 unidad al instante.</p>
+      <div class="mensaje-exito" id="mensaje-exito"></div>
+      <div class="mensaje-error" id="mensaje-error"></div>
+      <div class="rejilla-productos" id="rejilla-productos">
+        <p>Cargando catálogo...</p>
+      </div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Mis últimas ventas</h2>
+      <table>
+        <thead>
+          <tr><th>Producto</th><th>Cant.</th><th>Subtotal</th><th>Hora</th></tr>
+        </thead>
+        <tbody id="tabla-mis-ventas"><tr><td colspan="4">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    Sesion.exigir();
+
+    function formatearMoneda(numero) {
+      return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(numero);
+    }
+
+    async function cargarProductos() {
+      const rejilla = document.getElementById("rejilla-productos");
+      try {
+        const productos = await apiFetch("/productos");
+        if (productos.length === 0) {
+          rejilla.innerHTML = "<p>No hay productos en el catálogo todavía.</p>";
+          return;
+        }
+        rejilla.innerHTML = productos
+          .map(
+            (p) => `
+            <button class="boton-producto" data-id="${p.id}" ${p.stock_actual <= 0 ? "disabled" : ""}>
+              <span class="nombre">${p.nombre}</span>
+              <span class="detalle">Stock: ${p.stock_actual} · ${formatearMoneda(p.precio_venta)}</span>
+            </button>`
+          )
+          .join("");
+
+        rejilla.querySelectorAll(".boton-producto").forEach((boton) => {
+          boton.addEventListener("click", () => registrarVenta(Number(boton.dataset.id)));
+        });
+      } catch (error) {
+        rejilla.innerHTML = `<p>Error cargando productos: ${error.message}</p>`;
+      }
+    }
+
+    async function cargarMisVentas() {
+      const cuerpoTabla = document.getElementById("tabla-mis-ventas");
+      try {
+        const ventas = await apiFetch("/ventas/mias");
+        if (ventas.length === 0) {
+          cuerpoTabla.innerHTML = "<tr><td colspan='4'>Todavía no registras ventas.</td></tr>";
+          return;
+        }
+        cuerpoTabla.innerHTML = ventas
+          .slice(0, 10)
+          .map(
+            (v) => `<tr>
+              <td>${v.nombre_producto}</td>
+              <td>${v.cantidad}</td>
+              <td>${formatearMoneda(v.subtotal)}</td>
+              <td>${new Date(v.fecha_venta).toLocaleTimeString("es-PE")}</td>
+            </tr>`
+          )
+          .join("");
+      } catch (error) {
+        cuerpoTabla.innerHTML = `<tr><td colspan="4">Error: ${error.message}</td></tr>`;
+      }
+    }
+
+    async function registrarVenta(productoId) {
+      const mensajeExito = document.getElementById("mensaje-exito");
+      const mensajeError = document.getElementById("mensaje-error");
+      mensajeExito.textContent = "";
+      mensajeError.textContent = "";
+      try {
+        const venta = await apiFetch("/ventas", {
+          method: "POST",
+          body: { producto_id: productoId, cantidad: 1 },
+        });
+        mensajeExito.textContent = `Venta registrada: ${venta.nombre_producto} (${formatearMoneda(venta.subtotal)})`;
+        await Promise.all([cargarProductos(), cargarMisVentas()]);
+      } catch (error) {
+        mensajeError.textContent = error.message;
+      }
+    }
+
+    cargarProductos();
+    cargarMisVentas();
+  </script>
+</body>
+</html>

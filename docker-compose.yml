@@ -1,0 +1,34 @@
+# docker-compose.yml = levanta SOLO la base de datos PostgreSQL en tu
+# computadora dentro de un contenedor (una "cajita" aislada), para que no
+# tengas que instalar Postgres manualmente en Windows.
+#
+# El backend (FastAPI) NO corre aquí adentro por ahora — corre normal en tu
+# máquina con uvicorn (ver backend/README.md). Esto es solo para tener la
+# base de datos lista rápido durante el desarrollo del MVP.
+#
+# NOTA: se detectó que esta máquina ya tiene un PostgreSQL nativo (servicio
+# de Windows "postgresql-x64-15") escuchando en el puerto 5432. Para no
+# chocar con él, este contenedor usa el puerto 5433 en tu máquina (el .env
+# ya apunta a 5433). Si prefieres usar tu Postgres nativo en vez de este
+# contenedor, ve la sección correspondiente en backend/README.md.
+#
+# Cómo usarlo:
+#   docker compose up -d      # levanta la base de datos en segundo plano
+#   docker compose down       # la apaga (los datos quedan guardados)
+#   docker compose down -v    # la apaga Y BORRA los datos guardados
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: plataforma_negocio
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: cambia_esta_clave
+    ports:
+      - "5433:5432"
+    volumes:
+      - datos_postgres:/var/lib/postgresql/data
+
+volumes:
+  datos_postgres:

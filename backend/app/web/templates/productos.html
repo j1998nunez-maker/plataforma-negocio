@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Productos - Plataforma Negocio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  {% include "_nav.html" %}
+
+  <div class="contenedor">
+    <div class="tarjeta oculto" id="tarjeta-nuevo-producto">
+      <h2>Nuevo producto</h2>
+      <form id="form-producto">
+        <label for="nombre">Nombre</label>
+        <input type="text" id="nombre" required />
+
+        <label for="categoria">Categoría (opcional)</label>
+        <input type="text" id="categoria" />
+
+        <label for="precio_venta">Precio de venta (S/)</label>
+        <input type="number" id="precio_venta" step="0.01" min="0.01" required />
+
+        <label for="stock_actual">Stock inicial</label>
+        <input type="number" id="stock_actual" min="0" value="0" required />
+
+        <label for="fecha_vencimiento">Fecha de vencimiento (opcional)</label>
+        <input type="date" id="fecha_vencimiento" />
+
+        <div class="mensaje-error" id="mensaje-error"></div>
+        <button type="submit" class="boton-primario" style="margin-top: 8px;">Guardar producto</button>
+      </form>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Catálogo</h2>
+      <table>
+        <thead>
+          <tr><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th>Vence</th><th></th></tr>
+        </thead>
+        <tbody id="tabla-productos"><tr><td colspan="6">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    Sesion.exigir();
+
+    function formatearMoneda(numero) {
+      return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(numero);
+    }
+
+    if (["dueno", "contador"].includes(Sesion.rol())) {
+      document.getElementById("tarjeta-nuevo-producto").classList.remove("oculto");
+    }
+
+    async function cargarProductos() {
+      const cuerpoTabla = document.getElementById("tabla-productos");
+      const puedeEditar = ["dueno", "contador"].includes(Sesion.rol());
+      try {
+        const productos = await apiFetch("/productos");
+        cuerpoTabla.innerHTML = productos
+          .map(
+            (p) => `<tr>
+              <td>${p.nombre}</td>
+              <td>${p.categoria || "-"}</td>
+              <td>${formatearMoneda(p.precio_venta)}</td>
+              <td>${p.stock_actual}</td>
+              <td>${p.fecha_vencimiento || "-"}</td>
+              <td>${puedeEditar ? `<button class="boton-secundario" data-id="${p.id}" data-accion="stock">+ Stock</button>` : ""}</td>
+            </tr>`
+          )
+          .join("");
+
+        cuerpoTabla.querySelectorAll("button[data-accion='stock']").forEach((boton) => {
+          boton.addEventListener("click", () => agregarStock(Number(boton.dataset.id)));
+        });
+      } catch (error) {
+        cuerpoTabla.innerHTML = `<tr><td colspan="6">Error: ${error.message}</td></tr>`;
+      }
+    }
+
+    async function agregarStock(productoId) {
+      const cantidadTexto = window.prompt("¿Cuántas unidades quieres agregar al stock?", "10");
+      const cantidad = Number(cantidadTexto);
+      if (!cantidadTexto || Number.isNaN(cantidad) || cantidad <= 0) return;
+
+      try {
+        const productos = await apiFetch("/productos");
+        const actual = productos.find((p) => p.id === productoId);
+        await apiFetch(`/productos/${productoId}`, {
+          method: "PATCH",
+          body: { stock_actual: actual.stock_actual + cantidad },
+        });
+        await cargarProductos();
+      } catch (error) {
+        alert(`Error: ${error.message}`);
+      }
+    }
+
+    const formulario = document.getElementById("form-producto");
+    if (formulario) {
+      formulario.addEventListener("submit", async (evento) => {
+        evento.preventDefault();
+        const mensajeError = document.getElementById("mensaje-error");
+        mensajeError.textContent = "";
+
+        const cuerpo = {
+          nombre: document.getElementById("nombre").value,
+          categoria: document.getElementById("categoria").value || null,
+          precio_venta: Number(document.getElementById("precio_venta").value),
+          stock_actual: Number(document.getElementById("stock_actual").value),
+          fecha_vencimiento: document.getElementById("fecha_vencimiento").value || null,
+        };
+
+        try {
+          await apiFetch("/productos", { method: "POST", body: cuerpo });
+          formulario.reset();
+          await cargarProductos();
+        } catch (error) {
+          mensajeError.textContent = error.message;
+        }
+      });
+    }
+
+    cargarProductos();
+  </script>
+</body>
+</html>

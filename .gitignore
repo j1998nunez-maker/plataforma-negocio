@@ -1,0 +1,26 @@
+# .gitignore de la raíz del proyecto = la lista de "esto nunca se sube a
+# git", aplicada a todo el proyecto (backend, y lo que se agregue después,
+# como el frontend o carpetas de datos). Ya existía un .gitignore dentro de
+# backend/ con estas mismas reglas, pero este de la raíz asegura que
+# también queden protegidos si en algún momento se agregan archivos
+# sensibles fuera de esa carpeta.
+
+# Variables de entorno: aquí viven las contraseñas de la base de datos y la
+# llave secreta de los tokens JWT. NUNCA deben subirse a git.
+.env
+
+# Entornos virtuales de Python (se generan localmente, no se comparten)
+.venv/
+venv/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Bases de datos locales y logs (archivos temporales de desarrollo)
+*.db
+*.log
+
+# Archivos propios del sistema operativo / editor
+.DS_Store
+Thumbs.db

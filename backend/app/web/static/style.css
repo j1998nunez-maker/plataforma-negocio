@@ -1,0 +1,147 @@
+/* Estilos simples y neutros para el MVP. Nada de frameworks pesados. */
+
+:root {
+  --color-fondo: #f5f6f8;
+  --color-texto: #1f2430;
+  --color-texto-suave: #667085;
+  --color-borde: #e2e4e9;
+  --color-primario: #2f6feb;
+  --color-primario-hover: #2557c4;
+  --color-exito: #16794f;
+  --color-error: #c0392b;
+  --color-tarjeta: #ffffff;
+  --radio: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--color-fondo);
+  color: var(--color-texto);
+}
+
+.barra-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: var(--color-tarjeta);
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.barra-nav .marca { font-weight: 700; }
+
+.barra-nav nav a {
+  margin-right: 16px;
+  color: var(--color-texto-suave);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.barra-nav nav a:hover { color: var(--color-primario); }
+
+.barra-nav .salir {
+  background: none;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.contenedor {
+  max-width: 960px;
+  margin: 32px auto;
+  padding: 0 20px;
+}
+
+.tarjeta {
+  background: var(--color-tarjeta);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 17px; margin: 0 0 14px; }
+p.subtitulo { color: var(--color-texto-suave); margin-top: 0; }
+
+label { display: block; font-size: 13px; margin: 10px 0 4px; color: var(--color-texto-suave); }
+
+input, select {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--color-borde);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.boton-primario {
+  background: var(--color-primario);
+  color: white;
+}
+.boton-primario:hover { background: var(--color-primario-hover); }
+
+.boton-secundario {
+  background: var(--color-fondo);
+  border: 1px solid var(--color-borde);
+  color: var(--color-texto);
+}
+
+.mensaje-error {
+  color: var(--color-error);
+  font-size: 13px;
+  margin-top: 8px;
+  min-height: 16px;
+}
+
+.mensaje-exito {
+  color: var(--color-exito);
+  font-size: 13px;
+  margin-top: 8px;
+  min-height: 16px;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--color-borde); }
+th { color: var(--color-texto-suave); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+
+.rejilla-productos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.boton-producto {
+  background: var(--color-tarjeta);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  padding: 14px;
+  text-align: left;
+}
+.boton-producto:hover { border-color: var(--color-primario); }
+.boton-producto .nombre { font-weight: 700; display: block; margin-bottom: 4px; }
+.boton-producto .detalle { color: var(--color-texto-suave); font-size: 13px; display: block; }
+.boton-producto:disabled { opacity: .45; cursor: not-allowed; }
+
+.rejilla-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.kpi-tarjeta .valor { font-size: 26px; font-weight: 700; }
+.kpi-tarjeta .etiqueta { color: var(--color-texto-suave); font-size: 13px; }
+
+.oculto { display: none !important; }

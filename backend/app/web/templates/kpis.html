@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Indicadores - Plataforma Negocio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  {% include "_nav.html" %}
+
+  <div class="contenedor">
+    <div class="tarjeta">
+      <h2>Resumen</h2>
+      <p class="subtitulo">
+        Este es un vistazo rápido. El análisis a fondo se hace en el dashboard de Power BI,
+        conectado directo a la base de datos.
+      </p>
+      <div class="rejilla-kpis" id="rejilla-kpis">
+        <p>Cargando...</p>
+      </div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Productos más vendidos (top 5)</h2>
+      <table>
+        <thead><tr><th>Producto</th><th>Unidades</th><th>Total vendido</th></tr></thead>
+        <tbody id="tabla-top-productos"><tr><td colspan="3">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    Sesion.exigir();
+
+    function formatearMoneda(numero) {
+      return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(numero);
+    }
+
+    async function cargarKpis() {
+      const rejilla = document.getElementById("rejilla-kpis");
+      const tablaTop = document.getElementById("tabla-top-productos");
+      try {
+        const r = await apiFetch("/kpis/resumen");
+
+        rejilla.innerHTML = `
+          <div class="kpi-tarjeta"><div class="valor">${r.ventas_hoy_cantidad}</div><div class="etiqueta">Ventas hoy</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${formatearMoneda(r.ventas_hoy_total)}</div><div class="etiqueta">Ingresos hoy</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${r.ventas_mes_cantidad}</div><div class="etiqueta">Ventas del mes</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${formatearMoneda(r.ventas_mes_total)}</div><div class="etiqueta">Ingresos del mes</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${r.productos_por_vencer}</div><div class="etiqueta">Productos por vencer (30 días)</div></div>
+        `;
+
+        tablaTop.innerHTML = r.productos_mas_vendidos.length
+          ? r.productos_mas_vendidos
+              .map((p) => `<tr><td>${p.nombre}</td><td>${p.unidades_vendidas}</td><td>${formatearMoneda(p.total_vendido)}</td></tr>`)
+              .join("")
+          : "<tr><td colspan='3'>Todavía no hay ventas registradas.</td></tr>";
+      } catch (error) {
+        rejilla.innerHTML = `<p>Error: ${error.message}</p>`;
+      }
+    }
+
+    cargarKpis();
+  </script>
+</body>
+</html>
