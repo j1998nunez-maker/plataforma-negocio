@@ -55,6 +55,22 @@ async function apiFetch(ruta, opciones = {}) {
   return datos;
 }
 
+// Convierte un ISO de fecha/hora en UTC (como llegan `fecha_venta` desde la
+// API) a la fecha calendario de Lima (UTC-5, sin horario de verano) en
+// formato "YYYY-MM-DD". Usa un offset fijo en vez de la zona horaria del
+// navegador, para que /venta y /kpis coincidan con "el día" que usa el
+// backend sin importar en qué huso horario esté configurada la PC que
+// abre la página.
+function fechaLimaISO(fechaIsoUtc) {
+  const instanteUtc = new Date(fechaIsoUtc);
+  const instanteLima = new Date(instanteUtc.getTime() - 5 * 60 * 60 * 1000);
+  return instanteLima.toISOString().slice(0, 10);
+}
+
+function hoyLimaISO() {
+  return fechaLimaISO(new Date().toISOString());
+}
+
 // Pinta la barra de navegación según el rol logueado y arma el botón de
 // salir. Se llama al cargar cualquier página protegida.
 function pintarNav() {
@@ -68,6 +84,7 @@ function pintarNav() {
   const enlaces = [{ href: "/venta", texto: "Registrar venta", roles: ["dueno", "contador", "vendedor"] }];
   enlaces.push({ href: "/productos", texto: "Productos", roles: ["dueno", "contador", "vendedor"] });
   enlaces.push({ href: "/kpis", texto: "Indicadores", roles: ["dueno", "contador"] });
+  enlaces.push({ href: "/caja", texto: "Cierre de caja", roles: ["dueno", "contador"] });
   enlaces.push({ href: "/usuarios", texto: "Usuarios", roles: ["dueno", "contador"] });
 
   contenedorNav.innerHTML = enlaces

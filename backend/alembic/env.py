@@ -9,6 +9,7 @@ from alembic import context
 # configuración real del proyecto (para tomar la URL de conexión del .env,
 # no de alembic.ini) y cada módulo de modelos (para que `Base.metadata`
 # sepa que existen "usuarios", "productos" y "ventas").
+from app.caja import models as _caja_models  # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
 from app.productos import models as _productos_models  # noqa: F401

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Productos - Plataforma Negocio</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v={{ version_estatica('style.css') }}" />
 </head>
 <body>
   {% include "_nav.html" %}
@@ -35,16 +35,17 @@
 
     <div class="tarjeta">
       <h2>Catálogo</h2>
+      <p class="subtitulo">Los productos inactivos no se pueden vender, pero su historial se conserva.</p>
       <table>
         <thead>
-          <tr><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th>Vence</th><th></th></tr>
+          <tr><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th>Vence</th><th>Estado</th><th></th></tr>
         </thead>
-        <tbody id="tabla-productos"><tr><td colspan="6">Cargando...</td></tr></tbody>
+        <tbody id="tabla-productos"><tr><td colspan="7">Cargando...</td></tr></tbody>
       </table>
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v={{ version_estatica('app.js') }}"></script>
   <script>
     Sesion.exigir();
 
@@ -60,25 +61,38 @@
       const cuerpoTabla = document.getElementById("tabla-productos");
       const puedeEditar = ["dueno", "contador"].includes(Sesion.rol());
       try {
-        const productos = await apiFetch("/productos");
+        const productos = await apiFetch("/productos?incluir_inactivos=true");
         cuerpoTabla.innerHTML = productos
-          .map(
-            (p) => `<tr>
+          .map((p) => {
+            const acciones = puedeEditar
+              ? `<button class="boton-secundario" data-id="${p.id}" data-accion="stock">+ Stock</button>
+                 <button class="boton-secundario ${p.activo ? "boton-desactivar" : ""}" data-id="${p.id}" data-accion="${p.activo ? "desactivar" : "reactivar"}">
+                   ${p.activo ? "Desactivar" : "Reactivar"}
+                 </button>`
+              : "";
+            return `<tr class="${p.activo ? "" : "fila-inactiva"}">
               <td>${p.nombre}</td>
               <td>${p.categoria || "-"}</td>
               <td>${formatearMoneda(p.precio_venta)}</td>
               <td>${p.stock_actual}</td>
               <td>${p.fecha_vencimiento || "-"}</td>
-              <td>${puedeEditar ? `<button class="boton-secundario" data-id="${p.id}" data-accion="stock">+ Stock</button>` : ""}</td>
-            </tr>`
-          )
+              <td><span class="estado-badge ${p.activo ? "estado-activo" : "estado-inactivo"}">${p.activo ? "Activo" : "Inactivo"}</span></td>
+              <td class="celda-acciones">${acciones}</td>
+            </tr>`;
+          })
           .join("");
 
         cuerpoTabla.querySelectorAll("button[data-accion='stock']").forEach((boton) => {
           boton.addEventListener("click", () => agregarStock(Number(boton.dataset.id)));
         });
+        cuerpoTabla.querySelectorAll("button[data-accion='desactivar']").forEach((boton) => {
+          boton.addEventListener("click", () => cambiarEstado(Number(boton.dataset.id), "desactivar"));
+        });
+        cuerpoTabla.querySelectorAll("button[data-accion='reactivar']").forEach((boton) => {
+          boton.addEventListener("click", () => cambiarEstado(Number(boton.dataset.id), "reactivar"));
+        });
       } catch (error) {
-        cuerpoTabla.innerHTML = `<tr><td colspan="6">Error: ${error.message}</td></tr>`;
+        cuerpoTabla.innerHTML = `<tr><td colspan="7">Error: ${error.message}</td></tr>`;
       }
     }
 
@@ -88,12 +102,27 @@
       if (!cantidadTexto || Number.isNaN(cantidad) || cantidad <= 0) return;
 
       try {
-        const productos = await apiFetch("/productos");
+        const productos = await apiFetch("/productos?incluir_inactivos=true");
         const actual = productos.find((p) => p.id === productoId);
         await apiFetch(`/productos/${productoId}`, {
           method: "PATCH",
           body: { stock_actual: actual.stock_actual + cantidad },
         });
+        await cargarProductos();
+      } catch (error) {
+        alert(`Error: ${error.message}`);
+      }
+    }
+
+    async function cambiarEstado(productoId, accion) {
+      if (accion === "desactivar") {
+        const confirmar = window.confirm(
+          "¿Desactivar este producto? Dejará de poder venderse en /venta, pero su historial de ventas y su lugar en los reportes de KPIs no se tocan. Se puede reactivar cuando quieras."
+        );
+        if (!confirmar) return;
+      }
+      try {
+        await apiFetch(`/productos/${productoId}/${accion}`, { method: "PATCH" });
         await cargarProductos();
       } catch (error) {
         alert(`Error: ${error.message}`);

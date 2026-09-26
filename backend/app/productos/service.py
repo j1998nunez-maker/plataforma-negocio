@@ -44,8 +44,22 @@ def actualizar_producto(db: Session, producto_id: int, datos: ProductoUpdate) ->
 
 
 def desactivar_producto(db: Session, producto_id: int) -> Producto:
+    """Desactiva el producto: deja de poder venderse (ver
+    `app.ventas.service.registrar_venta`) y de aparecer en el catálogo por
+    defecto, pero NO se borra — su historial de ventas pasadas y su lugar
+    en los reportes de KPIs quedan intactos, porque esas consultas se hacen
+    sobre la tabla `ventas` (que no cambia), no sobre si el producto sigue
+    activo."""
     producto = obtener_producto(db, producto_id)
     producto.activo = False
+    db.commit()
+    db.refresh(producto)
+    return producto
+
+
+def reactivar_producto(db: Session, producto_id: int) -> Producto:
+    producto = obtener_producto(db, producto_id)
+    producto.activo = True
     db.commit()
     db.refresh(producto)
     return producto

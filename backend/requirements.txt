@@ -17,3 +17,7 @@ pydantic-settings==2.7.0     # lee la configuración desde el archivo .env
 # --- Seguridad (login y tokens) ---
 pyjwt==2.10.1                 # genera y valida los tokens JWT
 bcrypt==4.2.1                 # encripta contraseñas
+
+# --- Reportes ---
+openpyxl==3.1.5               # genera el archivo .xlsx del historial de ventas por día
+fpdf2==2.8.3                  # genera el PDF del cierre de caja que se adjunta al correo

@@ -64,7 +64,19 @@ Te va a pedir nombre, correo y contraseña.
 - App web (login, ventas, productos, usuarios, KPIs): http://localhost:8000
 - Documentación interactiva de la API (Swagger): http://localhost:8000/docs
 
-## 6. Correr las pruebas automáticas
+## 6. Sembrar datos de prueba (opcional, solo cuando tú quieras)
+
+```powershell
+.venv\Scripts\python sembrar_datos_prueba.py             # crea productos y ventas de ejemplo
+.venv\Scripts\python sembrar_datos_prueba.py --limpiar   # borra SOLO esos datos de ejemplo
+```
+
+Es un script aparte, no se ejecuta solo con la app. Todo lo que crea queda
+marcado con el prefijo `DEMO - ` en el nombre del producto, así nunca se
+confunde con tu catálogo real — y `--limpiar` borra únicamente lo marcado
+así, sin tocar productos o ventas reales.
+
+## 7. Correr las pruebas automáticas
 
 ```powershell
 .venv\Scripts\pip install -r requirements-dev.txt
@@ -73,20 +85,21 @@ Te va a pedir nombre, correo y contraseña.
 
 Las pruebas usan una base de datos SQLite temporal (no tocan tu
 PostgreSQL real) y verifican: login, permisos por rol, registrar venta con
-descuento de stock, precio histórico, y el cálculo de KPIs. Las 9 pruebas
-pasan actualmente.
+descuento de stock, precio histórico, el cálculo de KPIs, y el cierre de
+caja con su reporte y aprobación. Las 39 pruebas pasan actualmente.
 
 ## Mapa del proyecto
 
 ```
 backend/
   app/
-    core/       -> configuración (.env) y seguridad (login, JWT)
+    core/       -> configuración (.env), seguridad (login, JWT), hora de Lima y envío de correo
     db/         -> conexión a PostgreSQL
     usuarios/   -> login y gestión de usuarios (roles: dueño, contador, vendedor)
     productos/  -> catálogo (nombre, stock, vencimiento)
-    ventas/     -> registro de ventas
+    ventas/     -> registro de ventas, resumen de hoy y más vendidos del mes
     kpis/       -> resumen de indicadores para la app (Power BI hace el análisis a fondo)
+    caja/       -> cierre de caja diario (retiros, cuadre) y reporte por correo al dueño
     web/        -> frontend simple (páginas HTML + JS que llaman a la API)
   alembic/      -> historial de migraciones de la base de datos
   tests/        -> pruebas automáticas
@@ -105,6 +118,23 @@ backend/
 | Crear usuarios nuevos | Sí | No | No |
 | Ver lista de usuarios | Sí | Sí | No |
 | Desactivar usuarios | Sí | No | No |
+| Registrar retiros y cerrar la caja del día | Sí | Sí | Sí |
+| Ver el historial de cierres de caja | Sí | Sí | No |
+| Marcar un cierre como "revisado" | Sí | No | No |
+
+## Reporte diario de cierre de caja por correo
+
+Al cerrar la caja del día (desde `/venta`), se genera un reporte y se envía
+por correo a todos los usuarios con rol `dueno`. El envío usa Gmail SMTP
+(librería estándar de Python, sin dependencias nuevas) y se configura con las
+variables `SMTP_*` del `.env` — mientras `SMTP_USER`/`SMTP_PASSWORD` estén
+vacíos, el cierre de caja funciona igual, solo que no se manda el correo (se
+avisa en el log del servidor). Para activarlo con Gmail:
+
+1. Activa la verificación en dos pasos en tu cuenta de Google.
+2. Genera una "contraseña de aplicación" en https://myaccount.google.com/apppasswords.
+3. En tu `.env`, pon `SMTP_USER=tu_correo@gmail.com` y `SMTP_PASSWORD=` esa
+   contraseña de aplicación (no tu contraseña normal).
 
 ## Conexión con Power BI (fase futura)
 

@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRACION_MINUTOS: int = 480  # 8 horas de turno
 
+    # --- Correo (reporte diario de cierre de caja al dueño) ---
+    # Vacíos = envío desactivado (el cierre de caja funciona igual sin
+    # correo configurado, solo no se notifica por email). Con Gmail, SMTP_USER
+    # es tu correo completo y SMTP_PASSWORD es una "contraseña de aplicación"
+    # (no tu contraseña normal) generada en myaccount.google.com/apppasswords.
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+
     @property
     def database_url(self) -> str:
         """Arma la cadena de conexión que SQLAlchemy necesita para hablar

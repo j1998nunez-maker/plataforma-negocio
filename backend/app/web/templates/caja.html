@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cierre de caja - Plataforma Negocio</title>
+  <link rel="stylesheet" href="/static/style.css?v={{ version_estatica('style.css') }}" />
+</head>
+<body>
+  {% include "_nav.html" %}
+
+  <div class="contenedor">
+    <div class="tarjeta">
+      <h2>Historial de cierres de caja</h2>
+      <p class="subtitulo">
+        Un cierre por día. El dueño marca cada día como "Revisado" después de comprobarlo.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Esperado</th>
+            <th>Contado</th>
+            <th>Diferencia</th>
+            <th>Cerrado por</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tabla-cierres"><tr><td colspan="7">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v={{ version_estatica('app.js') }}"></script>
+  <script>
+    Sesion.exigir();
+
+    function formatearMoneda(numero) {
+      return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(numero);
+    }
+
+    async function cargarCierres() {
+      const cuerpoTabla = document.getElementById("tabla-cierres");
+      const esDueno = Sesion.rol() === "dueno";
+      try {
+        const cierres = await apiFetch("/caja/cierres");
+        if (cierres.length === 0) {
+          cuerpoTabla.innerHTML = "<tr><td colspan='7'>Todavía no hay ningún cierre registrado.</td></tr>";
+          return;
+        }
+        cuerpoTabla.innerHTML = cierres
+          .map((c) => {
+            const revisado = c.estado === "revisado";
+            const cuadra = c.diferencia === 0;
+            return `<tr>
+              <td>${c.fecha}</td>
+              <td>${formatearMoneda(c.efectivo_esperado)}</td>
+              <td>${formatearMoneda(c.efectivo_contado)}</td>
+              <td style="${cuadra ? "" : "color: var(--color-error); font-weight: 600;"}">${formatearMoneda(c.diferencia)}</td>
+              <td>${c.nombre_usuario}</td>
+              <td><span class="estado-badge ${revisado ? "estado-activo" : "estado-inactivo"}">${revisado ? "Revisado" : "Pendiente"}</span></td>
+              <td>${esDueno && !revisado ? `<button class="boton-secundario" data-id="${c.id}">Marcar revisado</button>` : ""}</td>
+            </tr>`;
+          })
+          .join("");
+
+        cuerpoTabla.querySelectorAll("button[data-id]").forEach((boton) => {
+          boton.addEventListener("click", () => marcarRevisado(Number(boton.dataset.id)));
+        });
+      } catch (error) {
+        cuerpoTabla.innerHTML = `<tr><td colspan="7">Error: ${error.message}</td></tr>`;
+      }
+    }
+
+    async function marcarRevisado(cierreId) {
+      if (!confirm("¿Marcar este día como revisado y cerrado?")) return;
+      try {
+        await apiFetch(`/caja/cierres/${cierreId}/revisar`, { method: "PATCH" });
+        await cargarCierres();
+      } catch (error) {
+        alert(`Error: ${error.message}`);
+      }
+    }
+
+    cargarCierres();
+  </script>
+</body>
+</html>

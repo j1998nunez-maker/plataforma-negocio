@@ -1,10 +1,15 @@
 # router.py = endpoints del catálogo de productos.
 #
-# GET  /productos            -> cualquier sesión (el vendedor necesita ver
-#                                el catálogo para registrar una venta)
-# POST /productos            -> dueño y contador
-# PATCH /productos/{id}       -> dueño y contador (editar precio/stock/etc.)
-# PATCH /productos/{id}/desactivar -> dueño y contador
+# GET  /productos                    -> cualquier sesión (el vendedor necesita
+#                                        ver el catálogo para registrar una
+#                                        venta); por defecto solo activos —
+#                                        ?incluir_inactivos=true trae también
+#                                        los desactivados (para /productos,
+#                                        donde se administran)
+# POST /productos                    -> dueño y contador
+# PATCH /productos/{id}               -> dueño y contador (editar precio/stock/etc.)
+# PATCH /productos/{id}/desactivar    -> dueño y contador
+# PATCH /productos/{id}/reactivar     -> dueño y contador
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -20,9 +25,11 @@ router = APIRouter(prefix="/productos", tags=["productos"])
 
 @router.get("", response_model=list[ProductoOut])
 def listar_productos(
-    db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)
+    incluir_inactivos: bool = False,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_current_user),
 ) -> list:
-    return service.listar_productos(db)
+    return service.listar_productos(db, solo_activos=not incluir_inactivos)
 
 
 @router.post("", response_model=ProductoOut, status_code=201)
@@ -51,3 +58,12 @@ def desactivar_producto(
     _: Usuario = Depends(requiere_rol("dueno", "contador")),
 ):
     return service.desactivar_producto(db, producto_id)
+
+
+@router.patch("/{producto_id}/reactivar", response_model=ProductoOut)
+def reactivar_producto(
+    producto_id: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(requiere_rol("dueno", "contador")),
+):
+    return service.reactivar_producto(db, producto_id)

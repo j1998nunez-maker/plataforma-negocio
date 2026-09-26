@@ -4,12 +4,60 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Indicadores - Plataforma Negocio</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v={{ version_estatica('style.css') }}" />
 </head>
 <body>
   {% include "_nav.html" %}
 
   <div class="contenedor">
+    <div class="tarjeta">
+      <h2>Resumen de hoy</h2>
+      <p class="subtitulo">Ventas de hoy (hora de Lima), agrupadas por producto.</p>
+      <table>
+        <thead><tr><th>Producto</th><th>Cantidad</th><th>Operaciones</th><th>Subtotal</th></tr></thead>
+        <tbody id="tabla-resumen-dia"><tr><td colspan="4">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Exportar historial de un día</h2>
+      <p class="subtitulo">Descarga en Excel el historial completo de ventas (venta por venta) de la fecha elegida.</p>
+      <div class="exportar-controles">
+        <input type="date" id="fecha-exportar" />
+        <button type="button" class="boton-primario" id="btn-exportar">Exportar a Excel</button>
+      </div>
+      <div class="mensaje-error" id="exportar-mensaje-error"></div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Jornada de hoy (08:00–20:00)</h2>
+      <p class="subtitulo">Ingresos por periodo (barras) y unidades por producto y periodo (líneas).</p>
+      <div class="filtro-productos" id="filtro-productos-jornada"></div>
+      <canvas id="grafico-jornada" height="260"></canvas>
+      <p class="subtitulo" id="jornada-fuera-horario" style="margin-top: 10px; margin-bottom: 0;">Cargando...</p>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Resumen del mes</h2>
+      <p class="subtitulo">Ventas del mes actual (hora de Lima), agrupadas por producto.</p>
+      <table>
+        <thead><tr><th>Producto</th><th>Unidades</th><th>Operaciones</th><th>Total vendido</th></tr></thead>
+        <tbody id="tabla-resumen-mes"><tr><td colspan="4">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="tarjeta tarjeta-alerta" id="alerta-vencidos" hidden>
+      <h2>⚠ Productos ya vencidos</h2>
+      <p class="subtitulo">Fecha de vencimiento ya pasada — hay que darlos de baja del catálogo.</p>
+      <ul class="lista-alerta"></ul>
+    </div>
+
+    <div class="tarjeta tarjeta-alerta tarjeta-alerta-agotados" id="alerta-agotados" hidden>
+      <h2>⛔ Productos agotados</h2>
+      <p class="subtitulo">Stock en 0 — no se pueden vender hasta reponer.</p>
+      <ul class="lista-alerta"></ul>
+    </div>
+
     <div class="tarjeta">
       <h2>Resumen</h2>
       <p class="subtitulo">
@@ -22,6 +70,19 @@
     </div>
 
     <div class="tarjeta">
+      <h2>Evolución diaria (últimos 30 días)</h2>
+      <p class="subtitulo">Total vendido en soles, por día.</p>
+      <canvas id="grafico-historico" height="220"></canvas>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Evolución diaria por producto (últimos 30 días)</h2>
+      <p class="subtitulo">Unidades vendidas por día, una línea por producto.</p>
+      <div class="filtro-productos" id="filtro-productos-diario"></div>
+      <canvas id="grafico-historico-productos" height="260"></canvas>
+    </div>
+
+    <div class="tarjeta">
       <h2>Productos más vendidos (top 5)</h2>
       <table>
         <thead><tr><th>Producto</th><th>Unidades</th><th>Total vendido</th></tr></thead>
@@ -30,7 +91,8 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/vendor/chart.umd.min.js?v={{ version_estatica('vendor/chart.umd.min.js') }}"></script>
+  <script src="/static/app.js?v={{ version_estatica('app.js') }}"></script>
   <script>
     Sesion.exigir();
 
@@ -38,18 +100,61 @@
       return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(numero);
     }
 
+    const PALETA_COLORES = [
+      "#2f6feb", "#16794f", "#c0392b", "#a3459c",
+      "#c77c11", "#0f9aa8", "#5b5fc7", "#9c6b1f",
+    ];
+
+    // Casillas para elegir qué productos se muestran en un gráfico de
+    // líneas por producto. `productos` es una lista de objetos con al
+    // menos {producto_id, nombre}. `alCambiar` recibe el Set de IDs
+    // seleccionados (se llama una vez al armar la lista, y de nuevo cada
+    // vez que el usuario marca/desmarca una casilla).
+    function crearFiltroProductos(contenedor, productos, alCambiar) {
+      const seleccionados = new Set(productos.map((p) => p.producto_id));
+
+      contenedor.innerHTML = productos
+        .map(
+          (p) => `
+          <label class="filtro-chip">
+            <input type="checkbox" value="${p.producto_id}" checked />
+            ${p.nombre}
+          </label>`
+        )
+        .join("");
+
+      contenedor.querySelectorAll("input[type=checkbox]").forEach((casilla) => {
+        casilla.addEventListener("change", () => {
+          const id = Number(casilla.value);
+          if (casilla.checked) seleccionados.add(id);
+          else seleccionados.delete(id);
+          alCambiar(seleccionados);
+        });
+      });
+
+      alCambiar(seleccionados);
+    }
+
     async function cargarKpis() {
       const rejilla = document.getElementById("rejilla-kpis");
       const tablaTop = document.getElementById("tabla-top-productos");
+      const alertaVencidos = document.getElementById("alerta-vencidos");
+      const alertaAgotados = document.getElementById("alerta-agotados");
       try {
         const r = await apiFetch("/kpis/resumen");
 
         rejilla.innerHTML = `
           <div class="kpi-tarjeta"><div class="valor">${r.ventas_hoy_cantidad}</div><div class="etiqueta">Ventas hoy</div></div>
           <div class="kpi-tarjeta"><div class="valor">${formatearMoneda(r.ventas_hoy_total)}</div><div class="etiqueta">Ingresos hoy</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${r.ventas_hoy_operaciones}</div><div class="etiqueta">Operaciones hoy</div></div>
           <div class="kpi-tarjeta"><div class="valor">${r.ventas_mes_cantidad}</div><div class="etiqueta">Ventas del mes</div></div>
           <div class="kpi-tarjeta"><div class="valor">${formatearMoneda(r.ventas_mes_total)}</div><div class="etiqueta">Ingresos del mes</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${r.ventas_mes_operaciones}</div><div class="etiqueta">Operaciones del mes</div></div>
           <div class="kpi-tarjeta"><div class="valor">${r.productos_por_vencer}</div><div class="etiqueta">Productos por vencer (30 días)</div></div>
+          <div class="kpi-tarjeta">
+            <div class="valor" style="font-size: 18px;">${r.producto_menor_rotacion ? r.producto_menor_rotacion.nombre : "—"}</div>
+            <div class="etiqueta">Menor rotación (30 días)${r.producto_menor_rotacion ? ": " + r.producto_menor_rotacion.unidades_vendidas + " und. vendidas" : ""}</div>
+          </div>
         `;
 
         tablaTop.innerHTML = r.productos_mas_vendidos.length
@@ -57,12 +162,280 @@
               .map((p) => `<tr><td>${p.nombre}</td><td>${p.unidades_vendidas}</td><td>${formatearMoneda(p.total_vendido)}</td></tr>`)
               .join("")
           : "<tr><td colspan='3'>Todavía no hay ventas registradas.</td></tr>";
+
+        if (r.productos_ya_vencidos.length > 0) {
+          alertaVencidos.hidden = false;
+          alertaVencidos.querySelector(".lista-alerta").innerHTML = r.productos_ya_vencidos
+            .map(
+              (p) => `
+              <li>
+                <span>${p.nombre} (stock: ${p.stock_actual})</span>
+                <span class="dato-alerta">Venció el ${new Date(p.fecha_vencimiento + "T00:00:00").toLocaleDateString("es-PE")}</span>
+              </li>`
+            )
+            .join("");
+        } else {
+          alertaVencidos.hidden = true;
+        }
+
+        if (r.productos_agotados.length > 0) {
+          alertaAgotados.hidden = false;
+          alertaAgotados.querySelector(".lista-alerta").innerHTML = r.productos_agotados
+            .map(
+              (p) => `
+              <li>
+                <span>${p.nombre}</span>
+                <span class="dato-alerta">Stock: 0</span>
+              </li>`
+            )
+            .join("");
+        } else {
+          alertaAgotados.hidden = true;
+        }
       } catch (error) {
         rejilla.innerHTML = `<p>Error: ${error.message}</p>`;
       }
     }
 
+    async function cargarResumenMes() {
+      const tabla = document.getElementById("tabla-resumen-mes");
+      try {
+        const filas = await apiFetch("/kpis/resumen-mes");
+        tabla.innerHTML = filas.length
+          ? filas
+              .map(
+                (f) =>
+                  `<tr><td>${f.nombre}</td><td>${f.unidades_vendidas}</td><td>${f.operaciones}</td><td>${formatearMoneda(f.total_vendido)}</td></tr>`
+              )
+              .join("")
+          : "<tr><td colspan='4'>Todavía no hay ventas este mes.</td></tr>";
+      } catch (error) {
+        tabla.innerHTML = `<tr><td colspan="4">Error: ${error.message}</td></tr>`;
+      }
+    }
+
+    async function cargarResumenDia() {
+      const tabla = document.getElementById("tabla-resumen-dia");
+      try {
+        const filas = await apiFetch("/kpis/resumen-dia");
+        tabla.innerHTML = filas.length
+          ? filas
+              .map(
+                (f) =>
+                  `<tr><td>${f.nombre}</td><td>${f.cantidad_total}</td><td>${f.operaciones}</td><td>${formatearMoneda(f.subtotal_total)}</td></tr>`
+              )
+              .join("")
+          : "<tr><td colspan='4'>Todavía no hay ventas hoy.</td></tr>";
+      } catch (error) {
+        tabla.innerHTML = `<tr><td colspan="4">Error: ${error.message}</td></tr>`;
+      }
+    }
+
+    let graficoHistorico = null;
+
+    async function cargarHistoricoDiario() {
+      const lienzo = document.getElementById("grafico-historico");
+      try {
+        const puntos = await apiFetch("/kpis/historico-diario");
+        const etiquetas = puntos.map((p) =>
+          new Date(p.fecha + "T00:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" })
+        );
+        const valores = puntos.map((p) => p.total);
+
+        if (graficoHistorico) graficoHistorico.destroy();
+        graficoHistorico = new Chart(lienzo, {
+          type: "bar",
+          data: {
+            labels: etiquetas,
+            datasets: [
+              {
+                label: "Ventas por día (S/)",
+                data: valores,
+                backgroundColor: "rgba(47, 111, 235, 0.65)",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, ticks: { callback: (valor) => formatearMoneda(valor) } },
+            },
+          },
+        });
+      } catch (error) {
+        lienzo.replaceWith(document.createTextNode(`Error: ${error.message}`));
+      }
+    }
+
+    let datosHistoricoProductos = [];
+    let graficoHistoricoProductos = null;
+
+    function dibujarGraficoHistoricoProductos(seleccion) {
+      const lienzo = document.getElementById("grafico-historico-productos");
+      const productosFiltrados = datosHistoricoProductos.filter((p) => seleccion.has(p.producto_id));
+      const etiquetas = datosHistoricoProductos[0].puntos.map((p) =>
+        new Date(p.fecha + "T00:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" })
+      );
+      const datasets = productosFiltrados.map((producto, indice) => ({
+        label: producto.nombre,
+        data: producto.puntos.map((p) => p.cantidad),
+        borderColor: PALETA_COLORES[indice % PALETA_COLORES.length],
+        backgroundColor: PALETA_COLORES[indice % PALETA_COLORES.length],
+        tension: 0.25,
+        pointRadius: 2,
+        fill: false,
+      }));
+
+      if (graficoHistoricoProductos) graficoHistoricoProductos.destroy();
+      graficoHistoricoProductos = new Chart(lienzo, {
+        type: "line",
+        data: { labels: etiquetas, datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true, position: "bottom" } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+      });
+    }
+
+    async function cargarHistoricoProductosDiario() {
+      const lienzo = document.getElementById("grafico-historico-productos");
+      const contenedorFiltro = document.getElementById("filtro-productos-diario");
+      try {
+        datosHistoricoProductos = await apiFetch("/kpis/historico-productos-diario");
+        if (datosHistoricoProductos.length === 0) {
+          lienzo.replaceWith(document.createTextNode("No hay productos activos todavía."));
+          return;
+        }
+        crearFiltroProductos(contenedorFiltro, datosHistoricoProductos, dibujarGraficoHistoricoProductos);
+      } catch (error) {
+        lienzo.replaceWith(document.createTextNode(`Error: ${error.message}`));
+      }
+    }
+
+    let datosJornada = null;
+    let graficoJornada = null;
+
+    function dibujarGraficoJornada(seleccion) {
+      const lienzo = document.getElementById("grafico-jornada");
+      const productosFiltrados = datosJornada.unidades_por_producto.filter((p) => seleccion.has(p.producto_id));
+
+      const datasets = [
+        {
+          type: "bar",
+          label: "Ingresos (S/)",
+          data: datosJornada.ingresos_por_periodo,
+          backgroundColor: "rgba(47, 111, 235, 0.55)",
+          yAxisID: "y",
+          order: 2,
+        },
+        ...productosFiltrados.map((producto, indice) => ({
+          type: "line",
+          label: producto.nombre,
+          data: producto.unidades_por_periodo,
+          borderColor: PALETA_COLORES[indice % PALETA_COLORES.length],
+          backgroundColor: PALETA_COLORES[indice % PALETA_COLORES.length],
+          yAxisID: "y1",
+          tension: 0.25,
+          pointRadius: 3,
+          order: 1,
+        })),
+      ];
+
+      if (graficoJornada) graficoJornada.destroy();
+      graficoJornada = new Chart(lienzo, {
+        type: "bar",
+        data: { labels: datosJornada.periodos, datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true, position: "bottom" } },
+          scales: {
+            y: {
+              type: "linear",
+              position: "left",
+              beginAtZero: true,
+              title: { display: true, text: "Ingresos (S/)" },
+              ticks: { callback: (valor) => formatearMoneda(valor) },
+            },
+            y1: {
+              type: "linear",
+              position: "right",
+              beginAtZero: true,
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: "Unidades" },
+              ticks: { precision: 0 },
+            },
+          },
+        },
+      });
+    }
+
+    async function cargarJornadaHoy() {
+      const lienzo = document.getElementById("grafico-jornada");
+      const contenedorFiltro = document.getElementById("filtro-productos-jornada");
+      const notaFuera = document.getElementById("jornada-fuera-horario");
+      try {
+        datosJornada = await apiFetch("/kpis/jornada-hoy");
+
+        if (datosJornada.unidades_por_producto.length === 0) {
+          lienzo.replaceWith(document.createTextNode("No hay productos activos todavía."));
+        } else {
+          crearFiltroProductos(contenedorFiltro, datosJornada.unidades_por_producto, dibujarGraficoJornada);
+        }
+
+        const fuera = datosJornada.fuera_de_horario;
+        notaFuera.textContent =
+          fuera.operaciones > 0
+            ? `Fuera de horario (antes de 08:00 o después de 20:00): ${fuera.operaciones} operación(es), ${fuera.cantidad} unidades, ${formatearMoneda(fuera.subtotal)}.`
+            : "Sin ventas fuera de horario hoy.";
+      } catch (error) {
+        lienzo.replaceWith(document.createTextNode(`Error: ${error.message}`));
+        notaFuera.textContent = "";
+      }
+    }
+
+    // --- Exportar historial de un día a Excel ---
+    const campoFechaExportar = document.getElementById("fecha-exportar");
+    campoFechaExportar.value = hoyLimaISO();
+    campoFechaExportar.max = hoyLimaISO();
+
+    document.getElementById("btn-exportar").addEventListener("click", async () => {
+      const mensajeError = document.getElementById("exportar-mensaje-error");
+      mensajeError.textContent = "";
+      const fecha = campoFechaExportar.value;
+      if (!fecha) {
+        mensajeError.textContent = "Elige una fecha.";
+        return;
+      }
+      try {
+        const respuesta = await fetch(`/api/kpis/exportar-dia?fecha=${fecha}`, {
+          headers: { Authorization: `Bearer ${Sesion.token()}` },
+        });
+        if (!respuesta.ok) {
+          const detalle = await respuesta.json().catch(() => ({}));
+          throw new Error(detalle.detail || "No se pudo exportar.");
+        }
+        const blob = await respuesta.blob();
+        const url = URL.createObjectURL(blob);
+        const enlace = document.createElement("a");
+        enlace.href = url;
+        enlace.download = `ventas_${fecha}.xlsx`;
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        mensajeError.textContent = error.message;
+      }
+    });
+
     cargarKpis();
+    cargarResumenDia();
+    cargarResumenMes();
+    cargarHistoricoDiario();
+    cargarHistoricoProductosDiario();
+    cargarJornadaHoy();
   </script>
 </body>
 </html>

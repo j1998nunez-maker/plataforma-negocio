@@ -12,7 +12,24 @@ from fastapi.templating import Jinja2Templates
 router = APIRouter(tags=["frontend"])
 
 _DIR_TEMPLATES = Path(__file__).parent / "templates"
+_DIR_STATIC = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=str(_DIR_TEMPLATES))
+
+
+def _version_estatica(nombre_archivo: str) -> int:
+    """Fecha de modificación de un archivo en static/, para usarla como
+    "?v=..." en su URL (ej. /static/app.js?v=1758...). Así, cada vez que se
+    edita app.js o style.css, la URL cambia y el navegador pide la versión
+    nueva en vez de quedarse con una copia vieja en caché — esto es lo que
+    causó que /venta y /kpis se rompieran después de agregar funciones
+    nuevas a app.js: el navegador siguió usando el app.js de antes."""
+    try:
+        return int((_DIR_STATIC / nombre_archivo).stat().st_mtime)
+    except FileNotFoundError:
+        return 0
+
+
+templates.env.globals["version_estatica"] = _version_estatica
 
 
 @router.get("/")
@@ -43,3 +60,8 @@ def pagina_usuarios(request: Request):
 @router.get("/kpis")
 def pagina_kpis(request: Request):
     return templates.TemplateResponse(request, "kpis.html")
+
+
+@router.get("/caja")
+def pagina_caja(request: Request):
+    return templates.TemplateResponse(request, "caja.html")

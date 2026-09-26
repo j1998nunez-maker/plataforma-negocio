@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Registrar venta - Plataforma Negocio</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v={{ version_estatica('style.css') }}" />
 </head>
 <body>
   {% include "_nav.html" %}
@@ -12,16 +12,27 @@
   <div class="contenedor">
     <div class="tarjeta">
       <h2>Registrar venta</h2>
-      <p class="subtitulo">Toca un producto para registrar la venta de 1 unidad al instante.</p>
+      <p class="subtitulo">Toca un producto, confirma la cantidad (1 por defecto) y listo.</p>
       <div class="mensaje-exito" id="mensaje-exito"></div>
       <div class="mensaje-error" id="mensaje-error"></div>
+      <input
+        type="search"
+        id="buscador-productos"
+        placeholder="Buscar por nombre o categoría..."
+        autocomplete="off"
+      />
+      <p class="subtitulo" id="etiqueta-lista-productos"></p>
       <div class="rejilla-productos" id="rejilla-productos">
         <p>Cargando catálogo...</p>
       </div>
     </div>
 
     <div class="tarjeta">
-      <h2>Mis últimas ventas</h2>
+      <h2>Mis ventas de hoy</h2>
+      <p class="subtitulo">Se reinicia cada día — el historial completo sigue disponible en Indicadores.</p>
+      <div class="rejilla-kpis" id="rejilla-resumen-hoy">
+        <p>Cargando resumen...</p>
+      </div>
       <table>
         <thead>
           <tr><th>Producto</th><th>Cant.</th><th>Subtotal</th><th>Hora</th></tr>
@@ -29,9 +40,53 @@
         <tbody id="tabla-mis-ventas"><tr><td colspan="4">Cargando...</td></tr></tbody>
       </table>
     </div>
+
+    <div class="tarjeta">
+      <h2>Cierre de caja</h2>
+      <p class="subtitulo">
+        Al final del día: registra los retiros de efectivo que hiciste y cuenta lo que
+        quedó físicamente en caja.
+      </p>
+      <div id="caja-contenido"><p>Cargando...</p></div>
+    </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <!-- Confirmación de cierre: pide el conteo físico y muestra el resultado
+       del cuadre antes de cerrar de verdad (la caja no se puede reabrir). -->
+  <div class="superposicion oculto" id="superposicion-cerrar-caja">
+    <div class="tarjeta modal-cantidad">
+      <h2>Cerrar caja de hoy</h2>
+      <p class="subtitulo" id="caja-esperado-modal"></p>
+      <label for="caja-efectivo-contado">¿Cuánto contaste físicamente en caja?</label>
+      <input type="number" id="caja-efectivo-contado" min="0" step="0.01" placeholder="0.00" />
+      <div class="mensaje-error" id="caja-modal-mensaje-error"></div>
+      <div class="modal-acciones">
+        <button type="button" class="boton-secundario" id="btn-cancelar-cierre">Cancelar</button>
+        <button type="button" class="boton-primario" id="btn-confirmar-cierre">Cerrar caja</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selector de cantidad: aparece al tocar un producto. Si el vendedor no
+       toca los botones "-"/"+" y solo presiona "Confirmar venta", se
+       registra 1 unidad (el caso más común queda igual de rápido). -->
+  <div class="superposicion oculto" id="superposicion-cantidad">
+    <div class="tarjeta modal-cantidad">
+      <h2 id="modal-nombre-producto">Producto</h2>
+      <div class="selector-cantidad">
+        <button type="button" class="boton-secundario boton-paso" id="btn-menos" aria-label="Restar unidad">−</button>
+        <span class="cantidad-valor" id="cantidad-valor">1</span>
+        <button type="button" class="boton-secundario boton-paso" id="btn-mas" aria-label="Sumar unidad">+</button>
+      </div>
+      <div class="mensaje-error" id="modal-mensaje-error"></div>
+      <div class="modal-acciones">
+        <button type="button" class="boton-secundario" id="btn-cancelar-venta">Cancelar</button>
+        <button type="button" class="boton-primario" id="btn-confirmar-venta">Confirmar venta</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v={{ version_estatica('app.js') }}"></script>
   <script>
     Sesion.exigir();
 
@@ -39,29 +94,91 @@
       return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(numero);
     }
 
+    let catalogoActual = [];
+    let idsMasVendidosMes = [];
+
+    function pintarProductos(productos) {
+      const rejilla = document.getElementById("rejilla-productos");
+      if (productos.length === 0) {
+        rejilla.innerHTML = "<p>No se encontró ningún producto.</p>";
+        return;
+      }
+      rejilla.innerHTML = productos
+        .map(
+          (p) => `
+          <button class="boton-producto" data-id="${p.id}" ${p.stock_actual <= 0 ? "disabled" : ""}>
+            <span class="nombre">${p.nombre}</span>
+            <span class="detalle">Stock: ${p.stock_actual} · ${formatearMoneda(p.precio_venta)}</span>
+          </button>`
+        )
+        .join("");
+
+      rejilla.querySelectorAll(".boton-producto").forEach((boton) => {
+        boton.addEventListener("click", () => {
+          const producto = catalogoActual.find((p) => p.id === Number(boton.dataset.id));
+          if (producto) abrirModalCantidad(producto);
+        });
+      });
+    }
+
+    // Vista por defecto (buscador vacío): los más vendidos del mes, en ese
+    // orden. Si el negocio no tuvo ventas este mes todavía (o los más
+    // vendidos ya no están activos), cae al catálogo completo para no
+    // dejar la pantalla vacía.
+    function productosPorDefecto() {
+      if (idsMasVendidosMes.length === 0) return catalogoActual;
+      const porId = new Map(catalogoActual.map((p) => [p.id, p]));
+      const destacados = idsMasVendidosMes.map((id) => porId.get(id)).filter(Boolean);
+      return destacados.length > 0 ? destacados : catalogoActual;
+    }
+
+    function aplicarBusqueda() {
+      const etiqueta = document.getElementById("etiqueta-lista-productos");
+      const texto = document.getElementById("buscador-productos").value.trim().toLowerCase();
+
+      if (texto === "") {
+        etiqueta.textContent =
+          idsMasVendidosMes.length > 0 ? "Más vendidos este mes" : "Catálogo completo";
+        pintarProductos(productosPorDefecto());
+        return;
+      }
+
+      const filtrados = catalogoActual.filter(
+        (p) =>
+          p.nombre.toLowerCase().includes(texto) ||
+          (p.categoria || "").toLowerCase().includes(texto)
+      );
+      etiqueta.textContent = `${filtrados.length} resultado${filtrados.length === 1 ? "" : "s"}`;
+      pintarProductos(filtrados);
+    }
+
     async function cargarProductos() {
       const rejilla = document.getElementById("rejilla-productos");
       try {
-        const productos = await apiFetch("/productos");
-        if (productos.length === 0) {
-          rejilla.innerHTML = "<p>No hay productos en el catálogo todavía.</p>";
-          return;
-        }
-        rejilla.innerHTML = productos
-          .map(
-            (p) => `
-            <button class="boton-producto" data-id="${p.id}" ${p.stock_actual <= 0 ? "disabled" : ""}>
-              <span class="nombre">${p.nombre}</span>
-              <span class="detalle">Stock: ${p.stock_actual} · ${formatearMoneda(p.precio_venta)}</span>
-            </button>`
-          )
-          .join("");
-
-        rejilla.querySelectorAll(".boton-producto").forEach((boton) => {
-          boton.addEventListener("click", () => registrarVenta(Number(boton.dataset.id)));
-        });
+        const [productos, masVendidos] = await Promise.all([
+          apiFetch("/productos"),
+          apiFetch("/ventas/mas-vendidos-mes"),
+        ]);
+        catalogoActual = productos;
+        idsMasVendidosMes = masVendidos;
+        aplicarBusqueda();
       } catch (error) {
         rejilla.innerHTML = `<p>Error cargando productos: ${error.message}</p>`;
+      }
+    }
+
+    document.getElementById("buscador-productos").addEventListener("input", aplicarBusqueda);
+
+    async function cargarResumenHoy() {
+      const rejilla = document.getElementById("rejilla-resumen-hoy");
+      try {
+        const r = await apiFetch("/ventas/resumen-hoy");
+        rejilla.innerHTML = `
+          <div class="kpi-tarjeta"><div class="valor">${formatearMoneda(r.total)}</div><div class="etiqueta">Total vendido hoy (negocio)</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${r.operaciones}</div><div class="etiqueta">Operaciones hoy (negocio)</div></div>
+        `;
+      } catch (error) {
+        rejilla.innerHTML = `<p>Error cargando resumen: ${error.message}</p>`;
       }
     }
 
@@ -69,12 +186,17 @@
       const cuerpoTabla = document.getElementById("tabla-mis-ventas");
       try {
         const ventas = await apiFetch("/ventas/mias");
-        if (ventas.length === 0) {
-          cuerpoTabla.innerHTML = "<tr><td colspan='4'>Todavía no registras ventas.</td></tr>";
+        // Solo las de HOY (día de Lima) -- la tabla "empieza limpia" cada
+        // día sin borrar nada: el historial completo sigue en la base de
+        // datos y en /kpis, esto es solo un filtro de vista.
+        const hoy = hoyLimaISO();
+        const ventasDeHoy = ventas.filter((v) => fechaLimaISO(v.fecha_venta) === hoy);
+
+        if (ventasDeHoy.length === 0) {
+          cuerpoTabla.innerHTML = "<tr><td colspan='4'>Todavía no registras ventas hoy.</td></tr>";
           return;
         }
-        cuerpoTabla.innerHTML = ventas
-          .slice(0, 10)
+        cuerpoTabla.innerHTML = ventasDeHoy
           .map(
             (v) => `<tr>
               <td>${v.nombre_producto}</td>
@@ -89,25 +211,210 @@
       }
     }
 
-    async function registrarVenta(productoId) {
-      const mensajeExito = document.getElementById("mensaje-exito");
-      const mensajeError = document.getElementById("mensaje-error");
-      mensajeExito.textContent = "";
-      mensajeError.textContent = "";
+    async function registrarVenta(productoId, cantidad) {
+      return apiFetch("/ventas", {
+        method: "POST",
+        body: { producto_id: productoId, cantidad },
+      });
+    }
+
+    // --- Selector de cantidad (aparece al tocar un producto) ---
+    let productoSeleccionado = null;
+    let cantidadSeleccionada = 1;
+
+    const superposicionCantidad = document.getElementById("superposicion-cantidad");
+    const elementoCantidad = document.getElementById("cantidad-valor");
+    const modalMensajeError = document.getElementById("modal-mensaje-error");
+
+    function actualizarCantidadMostrada() {
+      elementoCantidad.textContent = cantidadSeleccionada;
+    }
+
+    function abrirModalCantidad(producto) {
+      productoSeleccionado = producto;
+      cantidadSeleccionada = 1;
+      document.getElementById("modal-nombre-producto").textContent = producto.nombre;
+      modalMensajeError.textContent = "";
+      actualizarCantidadMostrada();
+      superposicionCantidad.classList.remove("oculto");
+    }
+
+    function cerrarModalCantidad() {
+      superposicionCantidad.classList.add("oculto");
+      productoSeleccionado = null;
+    }
+
+    document.getElementById("btn-menos").addEventListener("click", () => {
+      if (cantidadSeleccionada <= 1) return;
+      cantidadSeleccionada -= 1;
+      modalMensajeError.textContent = "";
+      actualizarCantidadMostrada();
+    });
+
+    document.getElementById("btn-mas").addEventListener("click", () => {
+      if (!productoSeleccionado) return;
+      if (cantidadSeleccionada >= productoSeleccionado.stock_actual) {
+        modalMensajeError.textContent = `Solo hay ${productoSeleccionado.stock_actual} en stock.`;
+        return;
+      }
+      cantidadSeleccionada += 1;
+      modalMensajeError.textContent = "";
+      actualizarCantidadMostrada();
+    });
+
+    document.getElementById("btn-cancelar-venta").addEventListener("click", cerrarModalCantidad);
+
+    // Cerrar tocando fuera de la tarjeta (el fondo oscuro)
+    superposicionCantidad.addEventListener("click", (evento) => {
+      if (evento.target === superposicionCantidad) cerrarModalCantidad();
+    });
+
+    document.addEventListener("keydown", (evento) => {
+      if (evento.key === "Escape" && !superposicionCantidad.classList.contains("oculto")) {
+        cerrarModalCantidad();
+      }
+    });
+
+    document.getElementById("btn-confirmar-venta").addEventListener("click", async () => {
+      if (!productoSeleccionado) return;
+      modalMensajeError.textContent = "";
       try {
-        const venta = await apiFetch("/ventas", {
-          method: "POST",
-          body: { producto_id: productoId, cantidad: 1 },
-        });
-        mensajeExito.textContent = `Venta registrada: ${venta.nombre_producto} (${formatearMoneda(venta.subtotal)})`;
-        await Promise.all([cargarProductos(), cargarMisVentas()]);
+        const venta = await registrarVenta(productoSeleccionado.id, cantidadSeleccionada);
+        document.getElementById("mensaje-error").textContent = "";
+        document.getElementById("mensaje-exito").textContent =
+          `Venta registrada: ${venta.cantidad} × ${venta.nombre_producto} (${formatearMoneda(venta.subtotal)})`;
+        cerrarModalCantidad();
+        await Promise.all([cargarProductos(), cargarMisVentas(), cargarResumenHoy(), cargarCaja()]);
       } catch (error) {
-        mensajeError.textContent = error.message;
+        // Se muestra dentro del selector (ej: el stock cambió justo ahora)
+        // para que el vendedor pueda ajustar la cantidad sin perder el paso.
+        modalMensajeError.textContent = error.message;
+      }
+    });
+
+    // --- Cierre de caja ---
+    function pintarCajaAbierta(estado) {
+      const contenedor = document.getElementById("caja-contenido");
+      const filasRetiros = estado.retiros.length
+        ? estado.retiros
+            .map(
+              (r) => `<li>
+                <span>${r.motivo} <span class="subtitulo">(${r.nombre_usuario}, ${new Date(r.fecha_creacion).toLocaleTimeString("es-PE")})</span></span>
+                <span class="dato-alerta" style="color: var(--color-texto);">${formatearMoneda(r.monto)}</span>
+              </li>`
+            )
+            .join("")
+        : "<li>Todavía no se registró ningún retiro hoy.</li>";
+
+      contenedor.innerHTML = `
+        <div class="rejilla-kpis">
+          <div class="kpi-tarjeta"><div class="valor">${formatearMoneda(estado.efectivo_esperado_hasta_ahora)}</div><div class="etiqueta">Efectivo esperado en caja ahora</div></div>
+        </div>
+        <ul class="lista-alerta" style="margin-top: 14px;">${filasRetiros}</ul>
+        <form id="form-retiro" style="margin-top: 14px;">
+          <label for="retiro-monto">Monto del retiro</label>
+          <input type="number" id="retiro-monto" min="0.01" step="0.01" placeholder="0.00" required />
+          <label for="retiro-motivo">Motivo</label>
+          <input type="text" id="retiro-motivo" maxlength="200" placeholder="Ej. pago a proveedor" required />
+          <div class="mensaje-error" id="retiro-mensaje-error"></div>
+          <div class="modal-acciones" style="margin-top: 10px;">
+            <button type="submit" class="boton-secundario">Agregar retiro</button>
+            <button type="button" class="boton-primario" id="btn-abrir-cierre">Cerrar caja</button>
+          </div>
+        </form>
+      `;
+
+      document.getElementById("form-retiro").addEventListener("submit", async (evento) => {
+        evento.preventDefault();
+        const mensajeError = document.getElementById("retiro-mensaje-error");
+        mensajeError.textContent = "";
+        try {
+          await apiFetch("/caja/retiros", {
+            method: "POST",
+            body: {
+              monto: Number(document.getElementById("retiro-monto").value),
+              motivo: document.getElementById("retiro-motivo").value,
+            },
+          });
+          await cargarCaja();
+        } catch (error) {
+          mensajeError.textContent = error.message;
+        }
+      });
+
+      document.getElementById("btn-abrir-cierre").addEventListener("click", () => {
+        document.getElementById("caja-esperado-modal").textContent =
+          `Efectivo esperado: ${formatearMoneda(estado.efectivo_esperado_hasta_ahora)}`;
+        document.getElementById("caja-efectivo-contado").value = "";
+        document.getElementById("caja-modal-mensaje-error").textContent = "";
+        document.getElementById("superposicion-cerrar-caja").classList.remove("oculto");
+      });
+    }
+
+    function pintarCajaCerrada(cierre) {
+      const contenedor = document.getElementById("caja-contenido");
+      const cuadra = cierre.diferencia === 0;
+      const revisado = cierre.estado === "revisado";
+      contenedor.innerHTML = `
+        <span class="estado-badge ${revisado ? "estado-activo" : "estado-inactivo"}">
+          ${revisado ? "Revisado" : "Pendiente de revisión"}
+        </span>
+        <div class="rejilla-kpis" style="margin-top: 14px;">
+          <div class="kpi-tarjeta"><div class="valor">${formatearMoneda(cierre.efectivo_esperado)}</div><div class="etiqueta">Efectivo esperado</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${formatearMoneda(cierre.efectivo_contado)}</div><div class="etiqueta">Efectivo contado</div></div>
+          <div class="kpi-tarjeta"><div class="valor">${cuadra ? "Cuadra ✅" : "Diferencia ⚠️ " + formatearMoneda(cierre.diferencia)}</div><div class="etiqueta">Resultado del cuadre</div></div>
+        </div>
+        <p class="subtitulo" style="margin-top: 10px;">Cerrado por ${cierre.nombre_usuario}.</p>
+      `;
+    }
+
+    async function cargarCaja() {
+      const contenedor = document.getElementById("caja-contenido");
+      try {
+        const estado = await apiFetch("/caja/hoy");
+        if (estado.cerrado) {
+          pintarCajaCerrada(estado.cierre);
+        } else {
+          pintarCajaAbierta(estado);
+        }
+      } catch (error) {
+        contenedor.innerHTML = `<p>Error cargando el cierre de caja: ${error.message}</p>`;
       }
     }
 
+    const superposicionCerrarCaja = document.getElementById("superposicion-cerrar-caja");
+
+    document.getElementById("btn-cancelar-cierre").addEventListener("click", () => {
+      superposicionCerrarCaja.classList.add("oculto");
+    });
+    superposicionCerrarCaja.addEventListener("click", (evento) => {
+      if (evento.target === superposicionCerrarCaja) superposicionCerrarCaja.classList.add("oculto");
+    });
+
+    document.getElementById("btn-confirmar-cierre").addEventListener("click", async () => {
+      const mensajeError = document.getElementById("caja-modal-mensaje-error");
+      mensajeError.textContent = "";
+      const valor = document.getElementById("caja-efectivo-contado").value;
+      if (valor === "") {
+        mensajeError.textContent = "Ingresa cuánto contaste en caja.";
+        return;
+      }
+      try {
+        await apiFetch("/caja/cerrar", {
+          method: "POST",
+          body: { efectivo_contado: Number(valor) },
+        });
+        superposicionCerrarCaja.classList.add("oculto");
+        await cargarCaja();
+      } catch (error) {
+        mensajeError.textContent = error.message;
+      }
+    });
+
     cargarProductos();
     cargarMisVentas();
+    cargarResumenHoy();
+    cargarCaja();
   </script>
 </body>
 </html>

@@ -24,3 +24,19 @@ class VentaOut(BaseModel):
     fecha_venta: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ResumenVentasHoy(BaseModel):
+    """Total y operaciones de HOY para todo el negocio (no solo del usuario
+    que consulta) — mismo cálculo que /kpis "Resumen de hoy", pero abierto a
+    los 3 roles para el resumen rápido de /venta."""
+
+    total: float
+    operaciones: int
+
+
+class ProductoVendidoFecha(BaseModel):
+    producto_id: int
+    nombre: str
+    cantidad: int
+    subtotal: float

@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.caja.router import router as caja_router
 from app.kpis.router import router as kpis_router
 from app.productos.router import router as productos_router
 from app.usuarios.router import auth_router, usuarios_router
@@ -32,6 +33,7 @@ app.include_router(usuarios_router, prefix="/api")
 app.include_router(productos_router, prefix="/api")
 app.include_router(ventas_router, prefix="/api")
 app.include_router(kpis_router, prefix="/api")
+app.include_router(caja_router, prefix="/api")
 
 # --- Frontend simple (HTML servido por el mismo backend) ---
 app.mount(

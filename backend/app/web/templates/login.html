@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ingresar - Plataforma Negocio</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v={{ version_estatica('style.css') }}" />
 </head>
 <body>
   <div class="contenedor" style="max-width: 380px; margin-top: 90px;">
@@ -28,7 +28,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v={{ version_estatica('app.js') }}"></script>
   <script>
     document.getElementById("form-login").addEventListener("submit", async (evento) => {
       evento.preventDefault();
