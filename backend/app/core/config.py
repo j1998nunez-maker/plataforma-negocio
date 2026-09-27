@@ -7,6 +7,7 @@
 # La usamos en todo el proyecto como: from app.core.config import settings
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
@@ -35,13 +36,40 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
 
+    # SSL: vacío = automático ("prefer" para localhost/Docker, que no tiene
+    # SSL; "require" para cualquier servidor externo como Supabase, que lo
+    # exige). Se puede forzar con DB_SSLMODE=disable|prefer|require|...
+    DB_SSLMODE: str = ""
+    # Segundos máximos esperando a que el servidor responda al conectar.
+    # Sin esto, una conexión que no avanza se queda colgada para siempre.
+    DB_CONNECT_TIMEOUT: int = 10
+
     @property
-    def database_url(self) -> str:
+    def db_sslmode(self) -> str:
+        if self.DB_SSLMODE:
+            return self.DB_SSLMODE
+        es_local = self.DB_HOST in ("localhost", "127.0.0.1", "::1", "db")
+        return "prefer" if es_local else "require"
+
+    @property
+    def database_url(self) -> URL:
         """Arma la cadena de conexión que SQLAlchemy necesita para hablar
-        con PostgreSQL, a partir de las piezas sueltas de arriba."""
-        return (
-            f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}"
-            f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        con PostgreSQL, a partir de las piezas sueltas de arriba.
+
+        Se usa URL.create (en vez de pegar texto con f-strings) para que
+        una contraseña con caracteres especiales (@ : / # %) se escape bien
+        y no rompa la URL."""
+        return URL.create(
+            "postgresql+psycopg2",
+            username=self.DB_USER,
+            password=self.DB_PASSWORD,
+            host=self.DB_HOST,
+            port=self.DB_PORT,
+            database=self.DB_NAME,
+            query={
+                "sslmode": self.db_sslmode,
+                "connect_timeout": str(self.DB_CONNECT_TIMEOUT),
+            },
         )
 
 

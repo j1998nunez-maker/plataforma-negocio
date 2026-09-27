@@ -93,6 +93,8 @@ button {
   color: white;
 }
 .boton-primario:hover { background: var(--color-primario-hover); }
+.boton-primario:disabled,
+.boton-secundario:disabled { opacity: .6; cursor: not-allowed; }
 
 .boton-secundario {
   background: var(--color-fondo);

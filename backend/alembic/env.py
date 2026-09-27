@@ -1,6 +1,6 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
+from sqlalchemy import create_engine
 from sqlalchemy import pool
 
 from alembic import context
@@ -27,8 +27,11 @@ if config.config_file_name is not None:
 
 # Usamos la URL de conexión armada desde el .env (app/core/config.py) en
 # vez de la que viene escrita en alembic.ini, para no duplicar la
-# contraseña de la base de datos en dos archivos distintos.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# contraseña de la base de datos en dos archivos distintos. Se usa
+# directamente (sin pasarla por config.set_main_option) porque el lector
+# de alembic.ini interpreta el "%" como especial y rompería contraseñas
+# escapadas en la URL.
+database_url = settings.database_url
 
 target_metadata = Base.metadata
 
@@ -50,9 +53,8 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -69,11 +71,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = create_engine(database_url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(

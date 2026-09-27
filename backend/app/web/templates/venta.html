@@ -96,6 +96,10 @@
 
     let catalogoActual = [];
     let idsMasVendidosMes = [];
+    // true mientras el POST /ventas está en camino: bloquea el botón de
+    // confirmar y las tarjetas de producto para que un doble clic no
+    // registre la misma venta dos veces.
+    let registrandoVenta = false;
 
     function pintarProductos(productos) {
       const rejilla = document.getElementById("rejilla-productos");
@@ -106,7 +110,7 @@
       rejilla.innerHTML = productos
         .map(
           (p) => `
-          <button class="boton-producto" data-id="${p.id}" ${p.stock_actual <= 0 ? "disabled" : ""}>
+          <button class="boton-producto" data-id="${p.id}" ${p.stock_actual <= 0 || registrandoVenta ? "disabled" : ""}>
             <span class="nombre">${p.nombre}</span>
             <span class="detalle">Stock: ${p.stock_actual} · ${formatearMoneda(p.precio_venta)}</span>
           </button>`
@@ -230,7 +234,23 @@
       elementoCantidad.textContent = cantidadSeleccionada;
     }
 
+    const botonConfirmarVenta = document.getElementById("btn-confirmar-venta");
+
+    function bloquearRegistroVenta(bloquear) {
+      registrandoVenta = bloquear;
+      botonConfirmarVenta.disabled = bloquear;
+      botonConfirmarVenta.textContent = bloquear ? "Registrando..." : "Confirmar venta";
+      ["btn-menos", "btn-mas", "btn-cancelar-venta"].forEach((id) => {
+        document.getElementById(id).disabled = bloquear;
+      });
+      document.querySelectorAll("#rejilla-productos .boton-producto").forEach((boton) => {
+        const producto = catalogoActual.find((p) => p.id === Number(boton.dataset.id));
+        boton.disabled = bloquear || !producto || producto.stock_actual <= 0;
+      });
+    }
+
     function abrirModalCantidad(producto) {
+      if (registrandoVenta) return;
       productoSeleccionado = producto;
       cantidadSeleccionada = 1;
       document.getElementById("modal-nombre-producto").textContent = producto.nombre;
@@ -240,6 +260,7 @@
     }
 
     function cerrarModalCantidad() {
+      if (registrandoVenta) return;
       superposicionCantidad.classList.add("oculto");
       productoSeleccionado = null;
     }
@@ -275,21 +296,28 @@
       }
     });
 
-    document.getElementById("btn-confirmar-venta").addEventListener("click", async () => {
-      if (!productoSeleccionado) return;
+    botonConfirmarVenta.addEventListener("click", async () => {
+      // Se bloquea ANTES del primer await: el segundo clic de un doble
+      // clic llega aquí con registrandoVenta ya en true y no hace nada.
+      if (!productoSeleccionado || registrandoVenta) return;
+      bloquearRegistroVenta(true);
       modalMensajeError.textContent = "";
+      let venta;
       try {
-        const venta = await registrarVenta(productoSeleccionado.id, cantidadSeleccionada);
-        document.getElementById("mensaje-error").textContent = "";
-        document.getElementById("mensaje-exito").textContent =
-          `Venta registrada: ${venta.cantidad} × ${venta.nombre_producto} (${formatearMoneda(venta.subtotal)})`;
-        cerrarModalCantidad();
-        await Promise.all([cargarProductos(), cargarMisVentas(), cargarResumenHoy(), cargarCaja()]);
+        venta = await registrarVenta(productoSeleccionado.id, cantidadSeleccionada);
       } catch (error) {
         // Se muestra dentro del selector (ej: el stock cambió justo ahora)
         // para que el vendedor pueda ajustar la cantidad sin perder el paso.
+        bloquearRegistroVenta(false);
         modalMensajeError.textContent = error.message;
+        return;
       }
+      document.getElementById("mensaje-error").textContent = "";
+      document.getElementById("mensaje-exito").textContent =
+        `Venta registrada: ${venta.cantidad} × ${venta.nombre_producto} (${formatearMoneda(venta.subtotal)})`;
+      bloquearRegistroVenta(false);
+      cerrarModalCantidad();
+      await Promise.all([cargarProductos(), cargarMisVentas(), cargarResumenHoy(), cargarCaja()]);
     });
 
     // --- Cierre de caja ---
